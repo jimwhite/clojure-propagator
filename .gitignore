@@ -1,4 +1,7 @@
 .cake/run
+.cake/cake.log
+.cake/history
+.cake/*.pid
 build
 classes
 lib
