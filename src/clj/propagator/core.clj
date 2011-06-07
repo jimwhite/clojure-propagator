@@ -1,15 +1,15 @@
 (ns propagator.core
-  (:use clojure.contrib.error-kit
-        propagator.scheduler))
+  (:use propagator.scheduler))
 
 (def nothing [:the-nothing])
 
 (defn nothing? [thing] (= thing nothing))
 
 (defprotocol Cell
-  (new-neighbor [cell new-neighbor])
+  (new-neighbor [cell nbr])
   (add-content [cell increment])
   (content [cell])
+  (remove-content [cell])
   (neighbors [cell]))
 
 (declare make-cell)
@@ -17,28 +17,28 @@
 (defmacro mutator
   [name argv & body]
   (let [carg `cell#]
-    `(defn ~name ~(into [carg] argv)
+    `(defn- ~name ~(into [carg] argv)
        (dosync (alter ~carg (fn [~'state] ~@body))))))
 
-(mutator set-content [content] (assoc state :content content))
-(mutator add-neighbor [neighbor] (assoc state :neighbors (cons neighbor (:neighbors state))))
+(mutator cell-set-content [content] (assoc state :content content))
+(mutator cell-add-neighbor [neighbor] (assoc state :neighbors (cons neighbor (:neighbors state))))
+(mutator cell-remove-content [] (assoc state :content nothing))
 
-(defrecord PropagatorCell [content neighbors]
+(defrecord PropagatorCell [cell-state]
   Cell
-  (new-neighbor [cell new-neighbor]
-                 (if (not (contains? neighbors new-neighbor))
-                   (make-cell content (conj neighbors new-neighbor))))
+  (new-neighbor [cell nbr]
+                (if (not (contains? (:neighbors @cell-state) nbr))
+                   (cell-add-neighbor cell-state nbr)))
   (add-content [cell increment]
                (cond
                 (nothing? increment) :ok
-                (nothing? content) (make-cell increment neighbors)
-                :else (if (not (= content increment)) (throw (Exception. "Inconsistent fact!")))))
-  (content [cell] content)
-  (neighbors [cell] neighbors))
+                (nothing? (:content @cell-state)) (cell-set-content cell-state increment)
+                :else (if (not (= (:content @cell-state) increment)) (throw (Exception. "Inconsistent fact!")))))
+  (content [cell] (:content @cell-state))
+  (remove-content [cell] (cell-remove-content cell-state))
+  (neighbors [cell] (:neighbors @cell-state)))
 
-(defn make-cell
-  ([] (PropagatorCell. nothing #{}))
-  ([content neighbors] (PropagatorCell. content neighbors)))
+(defn make-cell [] (PropagatorCell. (ref {:content nothing :neighbors []})))
 
 (defn propagator
   [neighbors to-do]
@@ -52,18 +52,18 @@
 
 (defn function->propagator-constructor
   [f]
-  (fn [cells]
-    (let [output (first cells)
-          inputs (rest cells)
+  (fn [& cells]
+    (let [output (last cells)
+          inputs (butlast cells)
           lifted-f (lift-to-cell-contents f)]
       (propagator inputs
                   #(add-content output
                                 (apply lifted-f (map content inputs)))))))
 
-(defn adder [] (function->propagator-constructor +))
-(defn subtractor [] (function->propagator-constructor -))
-(defn multiplier [] (function->propagator-constructor *))
-(defn divider [] (function->propagator-constructor /))
+(def adder (function->propagator-constructor +))
+(def subtractor (function->propagator-constructor -))
+(def multiplier (function->propagator-constructor *))
+(def divider (function->propagator-constructor /))
 (defn constant [val] (function->propagator-constructor (fn [] val)))
 
 (defn conditional [p if-true if-false output]
