@@ -1,9 +1,10 @@
 (ns propagator.core
   (:use propagator.scheduler))
 
-(def nothing [:the-nothing])
-
+(def nothing :nothing)
 (defn nothing? [thing] (= thing nothing))
+
+(def contradiction :contradiction)
 
 (defprotocol Cell
   (new-neighbor [cell nbr])
@@ -24,27 +25,55 @@
 (mutator cell-add-neighbor [neighbor] (assoc state :neighbors (cons neighbor (:neighbors state))))
 (mutator cell-remove-content [] (assoc state :content nothing))
 
+(defn- contradictory? [item] (= item contradiction))
+(defn- raise-inconsistency [] (throw (Exception. "Inconsistent fact!")))
+
+(defn- content-merge [new-info old-info]
+  (cond
+   (nothing? old-info) new-info
+   (nothing? new-info) old-info
+   (not (= new-info old-info)) contradiction
+   :else old-info))
+
 (defrecord PropagatorCell [cell-state]
   Cell
   (new-neighbor [cell nbr]
                 (if (not (contains? (:neighbors @cell-state) nbr))
-                   (cell-add-neighbor cell-state nbr)))
+                  (cell-add-neighbor cell-state nbr)))
   (add-content [cell increment]
-               (cond
-                (nothing? increment) :ok
-                (nothing? (:content @cell-state)) (cell-set-content cell-state increment)
-                :else (if (not (= (:content @cell-state) increment)) (throw (Exception. "Inconsistent fact!")))))
+               (let [current-val (content cell)
+                     answer (content-merge current-val increment)]
+                 (cond
+                  (= answer current-val) :ok
+                  (contradictory? answer) (raise-inconsistency)
+                  :else (cell-set-content cell-state answer))))
   (content [cell] (:content @cell-state))
   (remove-content [cell] (cell-remove-content cell-state))
   (neighbors [cell] (:neighbors @cell-state)))
 
-(defn make-cell [] (PropagatorCell. (ref {:content nothing :neighbors []})))
+(defn- cell-state-watch-function
+  [_ _ {old-content :content, [old-head & old-rest :as old-neighbors] :neighbors } {new-content :content, new-neighbors :neighbors}]
+  (cond
+   (and (not= old-content new-content) (not (nothing? new-content)) (not (empty? old-neighbors))) (apply alert-propagators old-neighbors)
+   (not= old-neighbors new-neighbors) (apply alert-propagators (take-while (partial not= old-head) new-neighbors))))
+
+(defn make-cell
+  "Create a new propagator cell, with no content and an empty set of neighbors.
+   The cell will be watched, any change to it's state will cause it's
+   neighbors to be notified.
+
+   'Neighbors' are actually functions that get scheduled for evaluation at a later
+   time. (See propagators.scheduler/alert-propagators)"
+  []
+  (PropagatorCell.
+   (add-watch (ref {:content nothing :neighbors []})
+              :changed
+              cell-state-watch-function)))
 
 (defn propagator
-  [neighbors to-do]
-  (doseq [cell neighbors]
-    (new-neighbor cell to-do))
-  (alert-propagators to-do))
+  [sources to-do]
+  (doseq [cell sources]
+    (new-neighbor cell to-do)))
 
 (defn lift-to-cell-contents
   [f]

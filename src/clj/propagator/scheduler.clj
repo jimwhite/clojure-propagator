@@ -17,21 +17,20 @@
   (dosync (commute alerted-propagators
                  (fn [prior] (apply conj prior propagators)))))
 
-(defn clear-alerted-propagators
+(defn take-alerted-propagators!
   "Remove all previously alerted propagators and return the set"
   []
-  (dosync (ref-set alerted-propagators #{})))
+  (dosync
+   (let [alerted @alerted-propagators]
+     (ref-set alerted-propagators #{})
+     alerted)))
 
 (defn any-propagators-alerted? [] (not (empty? @alerted-propagators)))
 
 (defn run
   "Execute all propagators currently activated. Continue running until no propagators remain"
   ([] (run 0))
-  ([iter] (let [alerted @alerted-propagators]
-        (dosync (clear-alerted-propagators)
-                (doseq [p alerted]
-                  (p))))
-      (if (any-propagators-alerted?)
-        (recur (inc iter))
-        iter
-        )))
+  ([iter] (doseq [p (take-alerted-propagators!)] (p))
+     (if (any-propagators-alerted?)
+       (recur (inc iter))
+       iter)))
