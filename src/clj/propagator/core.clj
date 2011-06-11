@@ -1,11 +1,6 @@
 (ns propagator.core
   (:use propagator.scheduler))
 
-(def nothing :nothing)
-(defn nothing? [thing] (= thing nothing))
-
-(def contradiction :contradiction)
-
 (defprotocol Cell
   (new-neighbor [cell nbr])
   (add-content [cell increment])
@@ -22,17 +17,17 @@
        (dosync (alter ~carg (fn [~'state] ~@body))))))
 
 (mutator cell-set-content [content] (assoc state :content content))
-(mutator cell-add-neighbor [neighbor] (assoc state :neighbors (cons neighbor (:neighbors state))))
-(mutator cell-remove-content [] (assoc state :content nothing))
+(mutator cell-add-neighbor [neighbor] (assoc state :neighbors (conj (:neighbors state) neighbor)))
+(mutator cell-remove-content [] (dissoc state :content))
 
-(defn- contradictory? [item] (= item contradiction))
+(defn- contradictory? [item] (= item :contradiction))
 (defn- raise-inconsistency [] (throw (Exception. "Inconsistent fact!")))
 
 (defn- content-merge [new-info old-info]
   (cond
-   (nothing? old-info) new-info
-   (nothing? new-info) old-info
-   (not (= new-info old-info)) contradiction
+   (nil? old-info) new-info
+   (nil? new-info) old-info
+   (not (= new-info old-info)) :contradiction
    :else old-info))
 
 (defrecord PropagatorCell [cell-state]
@@ -51,11 +46,24 @@
   (remove-content [cell] (cell-remove-content cell-state))
   (neighbors [cell] (:neighbors @cell-state)))
 
-(defn- cell-state-watch-function
-  [_ _ {old-content :content, [old-head & old-rest :as old-neighbors] :neighbors } {new-content :content, new-neighbors :neighbors}]
-  (cond
-   (and (not= old-content new-content) (not (nothing? new-content)) (not (empty? old-neighbors))) (apply alert-propagators old-neighbors)
-   (not= old-neighbors new-neighbors) (apply alert-propagators (take-while (partial not= old-head) new-neighbors))))
+(defn items-before
+  [coll sentinel]
+  (let [pred (partial not= sentinel)]
+    (take-while pred coll)))
+
+(defn- cell-neighbor-watch
+  "When the list of neighbors changes, alert the added neighbors so they receive
+  the cell's content on the next scheduler run."
+  [_ _ {[old-head & _ :as old-neighbors] :neighbors} {new-neighbors :neighbors}]
+  (if (not= old-neighbors new-neighbors)
+    (alert-propagators (items-before new-neighbors old-head))))
+
+(defn- cell-content-watch
+  "When the content of a cell changes, alert the cell's neighbors so they receive
+   the content from the cell."
+  [_ _ {old-content :content} {neighbors :neighbors, new-content :content}]
+  (if (and (not= old-content new-content) (not (empty? neighbors)))
+    (alert-propagators neighbors)))
 
 (defn make-cell
   "Create a new propagator cell, with no content and an empty set of neighbors.
@@ -66,18 +74,19 @@
    time. (See propagators.scheduler/alert-propagators)"
   []
   (PropagatorCell.
-   (add-watch (ref {:content nothing :neighbors []})
-              :changed
-              cell-state-watch-function)))
+   (doto (ref {:neighbors []})
+     (add-watch :neighbors cell-neighbor-watch)
+     (add-watch :content cell-content-watch))))
 
 (defn propagator
   [sources to-do]
   (doseq [cell sources]
-    (new-neighbor cell to-do)))
+    (new-neighbor cell to-do))
+  (alert-propagators [to-do]))
 
 (defn lift-to-cell-contents
   [f]
-  (fn [& args] (if (some nothing? args) nothing (apply f args))))
+  (fn [& args] (if (some nil? args) nil (apply f args))))
 
 (defn function->propagator-constructor
   [f]
@@ -85,9 +94,13 @@
     (let [output (last cells)
           inputs (butlast cells)
           lifted-f (lift-to-cell-contents f)]
+      (println cells)
       (propagator inputs
-                  #(add-content output
-                                (apply lifted-f (map content inputs)))))))
+                  #(do
+                     (println output)
+                     (println lifted-f)
+                     (add-content output
+                                  (apply lifted-f (map content inputs))))))))
 
 (def adder (function->propagator-constructor +))
 (def subtractor (function->propagator-constructor -))
@@ -99,7 +112,7 @@
   (propagator '(p if-true if-false)
               (fn []
                 (let [pred (content p)]
-                  (if (nothing? pred)
+                  (if (nil? pred)
                     :done
                     (add-content output
                                  (if pred
@@ -112,6 +125,6 @@
 (defn compound-propagator
   [neighbors to-build]
   (let [test  
-        (fn [] (if (some (comp not nothing?) (map content neighbors))
+        (fn [] (if (some (comp not nil?) (map content neighbors))
                 (to-build)))])
   (propagator neighbors test))
