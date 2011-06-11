@@ -13,9 +13,9 @@
 
 (defn alert-propagators
   "Schedule a collection of propagators to execute at the next run"
-  [& propagators]
+  [coll]
   (dosync (commute alerted-propagators
-                 (fn [prior] (apply conj prior propagators)))))
+                   (fn [prior] (apply conj prior coll)))))
 
 (defn take-alerted-propagators!
   "Remove all previously alerted propagators and return the set"
