@@ -46,7 +46,7 @@
                 (run)
                 (content const))))))
 
-#_(deftest compounds
+(deftest compounds
   (testing "arithmetic"
     (is (= 44 (let [a (make-cell)
                     b (make-cell)
