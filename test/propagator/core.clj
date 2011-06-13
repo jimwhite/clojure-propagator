@@ -9,7 +9,7 @@
 (deftest cells
   (testing "creation"
     (is (not (identical? (make-cell) (make-cell))))
-    (is (nothing? (content (make-cell)))))
+    (is (nil? (content (make-cell)))))
   
   (testing "content change"
     (is (identical? :foo 
@@ -43,7 +43,8 @@
   (testing "constants"
     (is (= 99 (let [const (make-cell)]
                 ((constant 99) const)
-                (run))))))
+                (run)
+                (content const))))))
 
 #_(deftest compounds
   (testing "arithmetic"
