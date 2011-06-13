@@ -9,7 +9,7 @@
 (deftest cells
   (testing "creation"
     (is (not (identical? (make-cell) (make-cell))))
-    (is (nil? (content (make-cell)))))
+    (is (nothing? (content (make-cell)))))
   
   (testing "content change"
     (is (identical? :foo 
@@ -19,7 +19,7 @@
     (is (thrown? Exception (let [cell (make-cell)]
                              (add-content cell :foo)
                              (add-content cell :bar))))
-    (is (nil? (let [cell (make-cell)]
+    (is (nothing? (let [cell (make-cell)]
                 (add-content cell :foo)
                 (remove-content cell)
                 (content cell)))))
@@ -67,9 +67,27 @@
                 (add-content a 33)
                 (add-content b 11)
                 (run)
-                (do (println (content a))
-                    (println (content b))
-                    (println (content s))
-                    (println (content c))
-                    (println (content d)))
                 (content d))))))
+
+(defn- make-nway-adder
+  [& vals]
+  (let [cells (for [v vals]
+                (-> (make-cell)
+                    (add-content v)))]
+    (apply adder-n cells)
+    cells))
+
+#_(deftest multiway
+  (testing "adder with backprop"
+    (is (= 21 (let [cells (make-nway-adder 8 13 nil)]
+                (run)
+                (content (last cells)))))
+    (is (= 8 (let [cells (make-nway-adder 13 nil 21)]
+               (run)
+               (content (second cells)))))
+    (is (= 13 (let [cells (make-nway-adder nil 8 21)]
+                (run)
+                (content (first cells)))))
+    (is (nothing? (let [cells (make-nway-adder 13 nil nil)]
+                (run)
+                (content (last cells)))))))

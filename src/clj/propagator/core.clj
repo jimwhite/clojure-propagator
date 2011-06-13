@@ -8,6 +8,11 @@
   (remove-content [cell])
   (neighbors [cell]))
 
+(def nothing :the-nothing)
+(defn nothing?
+  "Nothing is not the same as nil. A cell may have contents specified, but the content is itself nil."
+  [v] (= v nothing))
+
 (declare make-cell)
 
 (defmacro mutator
@@ -18,15 +23,14 @@
 
 (mutator cell-set-content [content] (assoc state :content content))
 (mutator cell-add-neighbor [neighbor] (assoc state :neighbors (conj (:neighbors state) neighbor)))
-(mutator cell-remove-content [] (dissoc state :content))
 
 (defn- contradictory? [item] (= item :contradiction))
 (defn- raise-inconsistency [] (throw (Exception. "Inconsistent fact!")))
 
 (defn- content-merge [new-info old-info]
   (cond
-   (nil? old-info) new-info
-   (nil? new-info) old-info
+   (nothing? old-info) new-info
+   (nothing? new-info) old-info
    (not (= new-info old-info)) :contradiction
    :else old-info))
 
@@ -39,11 +43,13 @@
                (let [current-val (content cell)
                      answer (content-merge current-val increment)]
                  (cond
-                  (= answer current-val) :ok
+                  (= answer current-val) cell
                   (contradictory? answer) (raise-inconsistency)
-                  :else (cell-set-content cell-state answer))))
+                  :else (do
+                          (cell-set-content cell-state answer)
+                          cell))))
   (content [cell] (:content @cell-state))
-  (remove-content [cell] (cell-remove-content cell-state))
+  (remove-content [cell] (cell-set-content cell-state nothing))
   (neighbors [cell] (:neighbors @cell-state)))
 
 (defn items-before
@@ -74,7 +80,7 @@
    time. (See propagators.scheduler/alert-propagators)"
   []
   (PropagatorCell.
-   (doto (ref {:neighbors []})
+   (doto (ref {:neighbors [] :content nothing})
      (add-watch :neighbors cell-neighbor-watch)
      (add-watch :content cell-content-watch))))
 
@@ -86,7 +92,7 @@
 
 (defn lift-to-cell-contents
   [f]
-  (fn [& args] (if (some nil? args) nil (apply f args))))
+  (fn [& args] (if (some nothing? args) nothing (apply f args))))
 
 (defn function->propagator-constructor
   [f]
@@ -94,13 +100,9 @@
     (let [output (last cells)
           inputs (butlast cells)
           lifted-f (lift-to-cell-contents f)]
-      (println cells)
       (propagator inputs
-                  #(do
-                     (println output)
-                     (println lifted-f)
-                     (add-content output
-                                  (apply lifted-f (map content inputs))))))))
+                  #(add-content output
+                                (apply lifted-f (map content inputs)))))))
 
 (def adder (function->propagator-constructor +))
 (def subtractor (function->propagator-constructor -))
@@ -112,7 +114,7 @@
   (propagator '(p if-true if-false)
               (fn []
                 (let [pred (content p)]
-                  (if (nil? pred)
+                  (if (nothing? pred)
                     :done
                     (add-content output
                                  (if pred
@@ -125,6 +127,20 @@
 (defn compound-propagator
   [neighbors to-build]
   (let [test  
-        (fn [] (if (some (comp not nil?) (map content neighbors))
+        (fn [] (if (some (comp not nothing?) (map content neighbors))
                 (to-build)))])
   (propagator neighbors test))
+
+(defn has-content
+  [& in]
+  (cond
+   (coll? in) (reduce (fn [st c] (and st (has-content c)) true) in)
+   :else (not (nothing? (content in)))))
+
+(defn adder-n
+  [in1 in2 out]
+  (propagator [in1 in2 out]
+              #(cond
+                (has-content in1 in2) (add-content out (+ (content in1) (content in2)))
+                (has-content in1 out) (add-content in2 (- (content out) (content in1)))
+                (has-content in2 out) (add-content in1 (- (content out) (content in2))))))
