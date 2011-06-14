@@ -78,11 +78,12 @@
 
    'Neighbors' are actually functions that get scheduled for evaluation at a later
    time. (See propagators.scheduler/alert-propagators)"
-  []
-  (PropagatorCell.
-   (doto (ref {:neighbors [] :content nothing})
-     (add-watch :neighbors cell-neighbor-watch)
-     (add-watch :content cell-content-watch))))
+  ([] (make-cell nothing))
+  ([initial-content]
+      (PropagatorCell.
+       (doto (ref {:neighbors [] :content initial-content})
+         (add-watch :neighbors cell-neighbor-watch)
+         (add-watch :content cell-content-watch)))))
 
 (defn propagator
   [sources to-do]
@@ -130,17 +131,3 @@
         (fn [] (if (some (comp not nothing?) (map content neighbors))
                 (to-build)))])
   (propagator neighbors test))
-
-(defn has-content
-  [& in]
-  (cond
-   (coll? in) (reduce (fn [st c] (and st (has-content c)) true) in)
-   :else (not (nothing? (content in)))))
-
-(defn adder-n
-  [in1 in2 out]
-  (propagator [in1 in2 out]
-              #(cond
-                (has-content in1 in2) (add-content out (+ (content in1) (content in2)))
-                (has-content in1 out) (add-content in2 (- (content out) (content in1)))
-                (has-content in2 out) (add-content in1 (- (content out) (content in2))))))

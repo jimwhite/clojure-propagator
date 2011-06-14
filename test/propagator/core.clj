@@ -68,26 +68,3 @@
                 (add-content b 11)
                 (run)
                 (content d))))))
-
-(defn- make-nway-adder
-  [& vals]
-  (let [cells (for [v vals]
-                (-> (make-cell)
-                    (add-content v)))]
-    (apply adder-n cells)
-    cells))
-
-#_(deftest multiway
-  (testing "adder with backprop"
-    (is (= 21 (let [cells (make-nway-adder 8 13 nil)]
-                (run)
-                (content (last cells)))))
-    (is (= 8 (let [cells (make-nway-adder 13 nil 21)]
-               (run)
-               (content (second cells)))))
-    (is (= 13 (let [cells (make-nway-adder nil 8 21)]
-                (run)
-                (content (first cells)))))
-    (is (nothing? (let [cells (make-nway-adder 13 nil nil)]
-                (run)
-                (content (last cells)))))))
