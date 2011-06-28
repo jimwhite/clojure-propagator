@@ -3,12 +3,7 @@
   (:import [javax.script ScriptEngine ScriptEngineManager]))
 
 (def apple-script-engine (.getEngineByName (ScriptEngineManager.) "AppleScript"))
-
-(defn- eval-apple-script
-  [s]
-  (println s)
-  (.eval apple-script-engine s (.getContext apple-script-engine)))
-
+(defn- eval-apple-script [s] (.eval apple-script-engine s (.getContext apple-script-engine)))
 (defn q [n] (str \" n \"))
 (defn as-array [c] (str \{ (s/join \, (map (comp q name) c)) \}))
 (defn tell [appname & s] (eval-apple-script (str "tell application " (q appname) "\n" (s/join s) "\nend tell")))
