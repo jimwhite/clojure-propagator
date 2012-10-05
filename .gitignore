@@ -12,3 +12,4 @@ build
 /.lein-deps-sum
 /checkouts
 /target
+/.idea/workspace.xml
