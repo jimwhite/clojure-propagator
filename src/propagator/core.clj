@@ -8,7 +8,7 @@
   (remove-content [cell])
   (neighbors [cell]))
 
-(def nothing :the-nothing)
+(def nothing ::the-nothing)
 (defn nothing?
   "Nothing is not the same as nil. A cell may have contents specified, but the content is itself nil."
   [v] (= v nothing))
@@ -19,35 +19,40 @@
   [name argv & body]
   (let [carg `cell#]
     `(defn- ~name ~(into [carg] argv)
-       (dosync (alter ~carg (fn [~'state] ~@body))))))
+       (dosync (alter ~carg ~@body)))))
 
-(mutator cell-set-content [content] (assoc state :content content))
-(mutator cell-add-neighbor [neighbor] (assoc state :neighbors (conj (:neighbors state) neighbor)))
+(mutator cell-set-content [content] assoc :content content)
+(mutator cell-add-neighbor [neighbor] update-in [:neighbors] conj neighbor)
 
-(defn- contradictory? [item] (= item :contradiction))
+;; expands to:
+;; (defn- cell-add-neighbor [cell__2654__auto__ neighbor]
+;;   (dosync
+;;    (alter cell__2654__auto__ update-in [:neighbors] conj neighbor)))
+
+(defn- contradictory? [item] (= item ::contradiction))
 (defn- raise-inconsistency [] (throw (Exception. "Inconsistent fact!")))
 
 (defn- content-merge [new-info old-info]
   (cond
    (nothing? old-info) new-info
    (nothing? new-info) old-info
-   (not (= new-info old-info)) :contradiction
+   (not (= new-info old-info)) ::contradiction
    :else old-info))
 
 (defrecord PropagatorCell [cell-state]
   Cell
   (new-neighbor [cell nbr]
-                (if (not (contains? (:neighbors @cell-state) nbr))
-                  (cell-add-neighbor cell-state nbr)))
+    (when-not (some #{nbr} (:neighbors @cell-state))
+      (cell-add-neighbor cell-state nbr)))
   (add-content [cell increment]
-               (let [current-val (content cell)
-                     answer (content-merge current-val increment)]
-                 (cond
-                  (= answer current-val) cell
-                  (contradictory? answer) (raise-inconsistency)
-                  :else (do
-                          (cell-set-content cell-state answer)
-                          cell))))
+    (let [current-val (content cell)
+          answer (content-merge current-val increment)]
+      (cond
+       (= answer current-val) cell
+       (contradictory? answer) (raise-inconsistency)
+       :else (do
+               (cell-set-content cell-state answer)
+               cell))))
   (content [cell] (:content @cell-state))
   (remove-content [cell] (cell-set-content cell-state nothing))
   (neighbors [cell] (:neighbors @cell-state)))
@@ -131,3 +136,10 @@
         (fn [] (if (some (comp not nothing?) (map content neighbors))
                 (to-build)))])
   (propagator neighbors test))
+
+(let [a (make-cell 8)
+      b (make-cell nothing)
+      c (make-cell 12)
+      my-adder (adder a b c)]
+  (run)
+  (map content [a b c]))
