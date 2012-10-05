@@ -1,4 +1,4 @@
-(ns propagator.core.test
+(ns propagator.core-test
   (:use propagator.core
         propagator.scheduler
         clojure.test))

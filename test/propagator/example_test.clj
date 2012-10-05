@@ -1,4 +1,4 @@
-(ns propagator.example.test
+(ns propagator.example-test
   (:use propagator.core 
         propagator.scheduler 
         propagator.example 
