@@ -3,6 +3,11 @@
 .cake/history
 .cake/*.pid
 build
-classes
-lib
-pom.xml
+/pom.xml
+*jar
+/lib
+/classes
+/native
+/.lein-failures
+/checkouts
+/.lein-deps-sum
