@@ -9,5 +9,5 @@ build
 /classes
 /native
 /.lein-failures
-/checkouts
 /.lein-deps-sum
+/checkouts
